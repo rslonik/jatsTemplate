@@ -68,8 +68,11 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $author = new Author();
         $author->setGivenName('author-firstname', 'en');
         $author->setFamilyName('author-lastname', 'en');
+        $author->setGivenName('author-firstname-fr', 'fr_CA');
+        $author->setFamilyName('author-lastname-fr', 'fr_CA');
         $affiliation = new Affiliation();
         $affiliation->setName('author-affiliation', 'en');
+        $affiliation->setName('author-affiliation-fr', 'fr_CA');
         $affiliation->setAuthorId(1);
         $author->setAffiliations([$affiliation]);
         $author->setEmail('someone@example.com');
@@ -155,6 +158,7 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $journal->setName('journal-title', 'en');
         $journal->setName('journal-title', 'gr');
         $journal->setPrimaryLocale('en');
+        $journal->setData('supportedSubmissionMetadataLocales', ['en', 'fr_CA']);
         $journal->setPath('journal-path');
         $journal->setData(Journal::SETTING_ENABLE_DOIS, true);
         $journal->setData('abbreviation', 'publicknowledgeJ Pub Know', 'en');
@@ -319,7 +323,8 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $articleFrontElement = new ArticleFront();
         $xml = $articleFrontElement->createArticleContribGroup(
             $submission,
-            $submission->getCurrentPublication()
+            $submission->getCurrentPublication(),
+            ['en', 'fr_CA']
         );
         self::assertXmlStringEqualsXmlFile(
             $this->xmlFilePath . 'articleMetaArticle_ContribGroupElement.xml',

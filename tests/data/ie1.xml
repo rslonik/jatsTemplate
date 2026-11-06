@@ -39,7 +39,7 @@
             <contrib-group content-type="author">
                 <contrib corresp="yes">
                     <name-alternatives>
-                        <name name-style="western" specific-use="primary">
+                        <name name-style="western" specific-use="primary" xml:lang="en">
                             <surname>author-lastname</surname>
                             <given-names>author-firstname</given-names>
                         </name>
@@ -49,7 +49,7 @@
                 </contrib>
             </contrib-group>
             <aff id="aff-1">
-                <institution content-type="orgname">author-affiliation</institution>
+                <institution content-type="orgname" xml:lang="en">author-affiliation</institution>
             </aff>
                 <pub-date date-type="pub" publication-format="epub">
                     <day>01</day>
