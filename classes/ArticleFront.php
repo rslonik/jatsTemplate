@@ -25,6 +25,7 @@ use Carbon\Carbon;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
+use PKP\affiliation\Affiliation;
 use PKP\author\contributorRole\ContributorRoleIdentifier;
 use PKP\author\contributorRole\ContributorType;
 use PKP\author\creditRole\CreditRoleDegree;
@@ -292,7 +293,11 @@ class ArticleFront extends DOMDocument
             $titleGroupElement->appendChild($transTitleGroupElement)
                 ->setAttribute('xml:lang', LocaleConversion::toBcp47($locale))->parentNode;
         }
-        $contribGroup = $this->createArticleContribGroup($submission, $publication);
+        $contribGroup = $this->createArticleContribGroup(
+            $submission,
+            $publication,
+            (array) $journal->getData('supportedSubmissionMetadataLocales')
+        );
 
         // Include authors
         $institutions = $contribGroup['institutions'];
@@ -302,18 +307,21 @@ class ArticleFront extends DOMDocument
         foreach ($institutions as $affiliationToken => $institution) {
             $affNode = $articleMetaElement->appendChild($this->createElement('aff'))
                 ->setAttribute('id', $affiliationToken)->parentNode;
+            $institutionParentNode = isset($institution['id'])
+                ? $affNode->appendChild($this->createElement('institution-wrap'))
+                : $affNode;
+            foreach ($institution['names'] as $locale => $name) {
+                $institutionNode = $institutionParentNode->appendChild($this->createElement('institution'))
+                    ->appendChild($this->createTextNode($name))->parentNode
+                    ->setAttribute('content-type', 'orgname')->parentNode;
+                if ($locale) {
+                    $institutionNode->setAttribute('xml:lang', LocaleConversion::toBcp47($locale));
+                }
+            }
             if (isset($institution['id'])) {
-                $institutionWrapNode = $affNode->appendChild($this->createElement('institution-wrap'));
-                $institutionWrapNode->appendChild($this->createElement('institution'))
-                    ->appendChild($this->createTextNode($institution['name']))->parentNode
-                    ->setAttribute('content-type', 'orgname');
-                $institutionWrapNode->appendChild($this->createElement('institution-id'))
+                $institutionParentNode->appendChild($this->createElement('institution-id'))
                     ->appendChild($this->createTextNode($institution['id']))->parentNode
                     ->setAttribute('institution-id-type', 'ror');
-            } else {
-                $affNode->appendChild($this->createElement('institution'))
-                    ->appendChild($this->createTextNode($institution['name']))->parentNode
-                    ->setAttribute('content-type', 'orgname');
             }
         }
 
@@ -917,9 +925,11 @@ class ArticleFront extends DOMDocument
     /**
      * Create article-meta contrib-group element
      */
-    public function createArticleContribGroup(Submission $submission, Publication $publication): array
+    public function createArticleContribGroup(Submission $submission, Publication $publication, array $locales = []): array
     {
         $submissionLocale = $submission->getData('locale');
+        // Names and affiliations are exported in every metadata locale they have, submission locale first
+        $locales = array_values(array_unique([$submissionLocale, ...$locales]));
         $contribGroupElement = $this->appendChild($this->createElement('contrib-group'));
 
         // Include authors
@@ -933,14 +943,18 @@ class ArticleFront extends DOMDocument
             $authorAffiliations = $author->getAffiliations();
             foreach ($authorAffiliations as $authorAffiliation) {
                 $affiliationName = $authorAffiliation->getLocalizedName($publication->getData('locale'));
+                if (!$affiliationName) {
+                    continue;
+                }
                 $affiliationToken = array_search($affiliationName, $affiliations);
-                if ($affiliationName && !$affiliationToken) {
+                if (!$affiliationToken) {
                     $affiliationToken = 'aff-' . (count($affiliations) + 1);
-                    $authorTokenList[] = $affiliationToken;
                     $affiliations[$affiliationToken] = $affiliationName;
-                    $institutions[$affiliationToken]['name'] = $affiliationName;
+                    $institutions[$affiliationToken]['names'] = $this->getAffiliationNames($authorAffiliation, $locales)
+                        ?: ['' => $affiliationName];
                     $institutions[$affiliationToken]['id'] = $authorAffiliation->getRor();
                 }
+                $authorTokenList[] = $affiliationToken;
             }
 
             $roleNodes = [];
@@ -999,19 +1013,30 @@ class ArticleFront extends DOMDocument
                         $stringNameElement->appendChild($this->createTextNode($preferredName));
                     }
 
-                    $nameElement = $nameAlternativesElement->appendChild($this->createElement('name'));
+                    foreach ($locales as $locale) {
+                        $surname = $author->getFamilyName($locale);
+                        $givenName = $author->getGivenName($locale);
+                        $isPrimary = $locale === $submissionLocale;
+                        if (!$isPrimary && !$surname && !$givenName) {
+                            continue;
+                        }
 
-                    if ($surname = $author->getFamilyName($submissionLocale)) {
-                        $nameStyle = 'western';
-                        $nameElement->appendChild($this->createElement('surname'))
-                            ->appendChild($this->createTextNode($surname));
-                    } else {
-                        $nameStyle = 'given-only';
+                        $nameElement = $nameAlternativesElement->appendChild($this->createElement('name'));
+                        if ($surname) {
+                            $nameStyle = 'western';
+                            $nameElement->appendChild($this->createElement('surname'))
+                                ->appendChild($this->createTextNode($surname));
+                        } else {
+                            $nameStyle = 'given-only';
+                        }
+                        $nameElement->setAttribute('name-style', $nameStyle);
+                        $nameElement->setAttribute('xml:lang', LocaleConversion::toBcp47($locale));
+                        if ($isPrimary) {
+                            $nameElement->setAttribute('specific-use', 'primary');
+                        }
+                        $nameElement->appendChild($this->createElement('given-names'))
+                            ->appendChild($this->createTextNode((string) $givenName));
                     }
-                    $nameElement->setAttribute('name-style', $nameStyle);
-                    $nameElement->setAttribute('specific-use', 'primary');
-                    $nameElement->appendChild($this->createElement('given-names'))
-                        ->appendChild($this->createTextNode($author->getGivenName($submissionLocale)));
                 }
 
                 if ($contributorType === ContributorType::ORGANIZATION->getName()) {
@@ -1089,6 +1114,24 @@ class ArticleFront extends DOMDocument
             'competingInterests' => $competingInterests,
             'correspondingAuthor' => $correspondingAuthor
         ];
+    }
+
+    /**
+     * Get the affiliation name in each of the given locales, keyed by locale.
+     * A ROR label takes precedence; the manually entered name covers locales ROR lacks.
+     */
+    protected function getAffiliationNames(Affiliation $affiliation, array $locales): array
+    {
+        $rorObject = $affiliation->getRorObject();
+        $names = [];
+        foreach ($locales as $locale) {
+            $name = $rorObject?->getName(LocaleConversion::getIso1FromLocale($locale))
+                ?: $affiliation->getName($locale);
+            if ($name) {
+                $names[$locale] = $name;
+            }
+        }
+        return $names;
     }
 
     /**

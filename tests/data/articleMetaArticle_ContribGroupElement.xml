@@ -12,9 +12,13 @@
     <contrib contrib-type="author" corresp="yes">
         <name-alternatives>
             <string-name specific-use="display">author-preferred-name</string-name>
-            <name name-style="western" specific-use="primary">
+            <name name-style="western" xml:lang="en" specific-use="primary">
                 <surname>author-lastname</surname>
                 <given-names>author-firstname</given-names>
+            </name>
+            <name name-style="western" xml:lang="fr-CA">
+                <surname>author-lastname-fr</surname>
+                <given-names>author-firstname-fr</given-names>
             </name>
         </name-alternatives>
         <bio xml:lang="en">

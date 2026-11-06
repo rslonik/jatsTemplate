@@ -45,7 +45,7 @@
                 <contrib contrib-type="author" corresp="yes">
                     <name-alternatives>
                         <string-name specific-use="display">author-preferred-name</string-name>
-                        <name name-style="western" specific-use="primary">
+                        <name name-style="western" xml:lang="en" specific-use="primary">
                             <surname>author-lastname</surname>
                             <given-names>author-firstname</given-names>
                         </name>
@@ -65,7 +65,7 @@
             </contrib-group>
             <aff id="aff-1">
                 <institution-wrap>
-                    <institution content-type="orgname">author-affiliation</institution>
+                    <institution content-type="orgname" xml:lang="en">author-affiliation</institution>
                     <institution-id institution-id-type="ror">https://ror.org/05ek4tb53</institution-id>
                 </institution-wrap>
             </aff>

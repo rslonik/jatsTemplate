@@ -21,6 +21,7 @@ use APP\publication\Publication;
 use APP\publication\Repository;
 use APP\section\Section;
 use APP\submission\Submission;
+use DOMElement;
 use DOMNode;
 use Illuminate\Support\LazyCollection;
 use Mockery;
@@ -109,6 +110,8 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $author = new Author();
         $author->setGivenName('author-firstname', 'en');
         $author->setFamilyName('author-lastname', 'en');
+        $author->setGivenName('author-firstname-fr', 'fr_CA');
+        $author->setFamilyName('author-lastname-fr', 'fr_CA');
         $author->setPreferredPublicName('author-preferred-name', 'en');
         $author->setData('contributorType', ContributorType::PERSON->getName());
         $contributorRoleAuthor = new ContributorRole();
@@ -121,6 +124,7 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $author->setContributorRoles([$contributorRoleAuthor]);
         $affiliation = new Affiliation();
         $affiliation->setName('author-affiliation', 'en');
+        $affiliation->setName('author-affiliation-fr', 'fr_CA');
         $affiliation->setAuthorId(1);
         $affiliation->setRor('https://ror.org/05ek4tb53');
         $author->setAffiliations([$affiliation]);
@@ -293,6 +297,7 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $journal->setName('journal-title', 'en');
         $journal->setName('journal-title', 'gr');
         $journal->setPrimaryLocale('en');
+        $journal->setData('supportedSubmissionMetadataLocales', ['en', 'fr_CA']);
         $journal->setPath('journal-path');
         $journal->setData(Journal::SETTING_ENABLE_DOIS, true);
         $journal->setData('abbreviation', 'J Pub Know', 'en');
@@ -919,12 +924,42 @@ class ArticleFrontTest extends \PKP\tests\PKPTestCase
         $articleFrontElement = new ArticleFront();
         $xml = $articleFrontElement->createArticleContribGroup(
             $submission,
-            $submission->getCurrentPublication()
+            $submission->getCurrentPublication(),
+            ['en', 'fr_CA']
         );
         self::assertXmlStringEqualsXmlFile(
             $this->xmlFilePath . 'articleMetaArticle_ContribGroupElement.xml',
             $articleFrontElement->saveXML($xml['contribGroupElement'])
         );
+    }
+
+    /**
+     * Test that every author sharing an affiliation references it, not only the first one.
+     */
+    public function testCreateArticleContribGroupSharedAffiliation()
+    {
+        $OAIRecord = $this->createOAIRecordMockObject();
+        $record = & $OAIRecord;
+        $submission = & $record->getData('article'); /** @var Submission $submission */
+        $publication = $submission->getCurrentPublication();
+        $firstAuthor = $publication->getData('authors')->first(); /** @var Author $firstAuthor */
+        $secondAuthor = clone $firstAuthor;
+        $secondAuthor->setId(2);
+        $publication->setData('authors', collect([$firstAuthor, $secondAuthor]));
+
+        $this->createRequestMockInstance();
+
+        $articleFrontElement = new ArticleFront();
+        $xml = $articleFrontElement->createArticleContribGroup($submission, $publication);
+
+        self::assertCount(1, $xml['institutions']);
+        foreach ($xml['contribGroupElement']->getElementsByTagName('contrib') as $contrib) {
+            $affXrefs = array_filter(
+                iterator_to_array($contrib->getElementsByTagName('xref')),
+                fn (DOMElement $xref) => $xref->getAttribute('ref-type') === 'aff'
+            );
+            self::assertSame(['aff-1'], array_values(array_map(fn (DOMElement $xref) => $xref->getAttribute('rid'), $affXrefs)));
+        }
     }
 
     /**
